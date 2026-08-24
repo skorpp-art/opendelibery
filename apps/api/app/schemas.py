@@ -139,7 +139,7 @@ class AgentBase(BaseModel):
     brief_dos: str = ""
     brief_donts: str = ""
     model: str = ""
-    provider: str = Field(default="openai", pattern=r"^(openai|anthropic)$")
+    provider: str = Field(default="openai", pattern=r"^(openai|anthropic|openrouter|deepseek)$")
     timezone: str = Field(default="UTC", max_length=64)
     temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     max_tokens: int = Field(default=2048, ge=1, le=32000)
@@ -173,7 +173,7 @@ class AgentUpdate(BaseModel):
     brief_dos: str | None = None
     brief_donts: str | None = None
     model: str | None = None
-    provider: str | None = Field(default=None, pattern=r"^(openai|anthropic)$")
+    provider: str | None = Field(default=None, pattern=r"^(openai|anthropic|openrouter|deepseek)$")
     timezone: str | None = Field(default=None, max_length=64)
     temperature: float | None = Field(default=None, ge=0.0, le=2.0)
     max_tokens: int | None = Field(default=None, ge=1, le=32000)

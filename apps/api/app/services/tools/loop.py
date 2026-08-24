@@ -81,6 +81,57 @@ async def anthropic_tool_loop(
     raise ValueError("tool loop did not converge")
 
 
+async def chat_completions_tool_loop(
+    base_url: str, api_key: str, model: str, messages: list[dict], specs: list[ToolSpec],
+    temperature: float | None, max_tokens: int | None,
+) -> Completion:
+    """Tool loop over the Chat Completions API, used by OpenAI-compatible
+    aggregators that don't implement the Responses API (OpenRouter, DeepSeek)."""
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    convo: list[dict] = list(messages)
+    tools = [{"type": "function", "function": {"name": s.name, "description": s.description, "parameters": s.input_schema}} for s in specs]
+    sampling: dict = {}
+    if temperature is not None:
+        sampling["temperature"] = temperature
+    if max_tokens is not None:
+        sampling["max_tokens"] = max_tokens
+    input_tokens = output_tokens = 0
+    metadata: list[dict] = []
+
+    for iteration in range(MAX_TOOL_ITERATIONS + 1):
+        payload: dict = {"model": model, "messages": convo, "tools": tools}
+        if iteration == MAX_TOOL_ITERATIONS:
+            payload["tool_choice"] = "none"
+        data = await _post_json(url, headers, payload, sampling)
+        usage = data.get("usage") or {}
+        input_tokens += int(usage.get("prompt_tokens") or 0)
+        output_tokens += int(usage.get("completion_tokens") or 0)
+        message = (data.get("choices") or [{}])[0].get("message") or {}
+        calls = message.get("tool_calls") or []
+        if not calls:
+            text = (message.get("content") or "").strip()
+            if not text:
+                raise ValueError("empty response")
+            return Completion(text, input_tokens, output_tokens, tool_calls=metadata or None)
+        convo.append({"role": "assistant", "content": message.get("content"), "tool_calls": calls})
+        for call in calls:
+            function = call.get("function") or {}
+            try:
+                args = json.loads(function.get("arguments") or "{}")
+            except ValueError:
+                args = {}
+            name = function.get("name", "")
+            spec = find_spec(specs, name)
+            if spec is None:
+                result, is_error = f"Error: unknown tool '{name}'", True
+            else:
+                result, is_error = await _execute(spec, args)
+            _record(metadata, name, args, result, is_error)
+            convo.append({"role": "tool", "tool_call_id": call.get("id"), "content": result})
+    raise ValueError("tool loop did not converge")
+
+
 async def openai_tool_loop(
     base_url: str, api_key: str, model: str, messages: list[dict], specs: list[ToolSpec],
     temperature: float | None, max_tokens: int | None,

@@ -71,6 +71,24 @@ def test_anthropic_uses_messages_api(monkeypatch):
     assert captured["payload"]["max_tokens"] == 100
 
 
+def test_openrouter_and_deepseek_use_chat_completions_api(monkeypatch):
+    for provider, base_url in (("openrouter", "https://openrouter.ai/api/v1"), ("deepseek", "https://api.deepseek.test/v1")):
+        captured = {}
+        _fake_http(monkeypatch, captured, {"choices": [{"message": {"content": "OK"}}], "usage": {"prompt_tokens": 3, "completion_tokens": 1}})
+        answer = asyncio.run(
+            ai_service.chat_completion(
+                provider, base_url, "secret", "some-model",
+                [{"role": "system", "content": "Be brief"}, {"role": "user", "content": "Hello"}],
+            )
+        )
+        assert answer.text == "OK"
+        assert answer.input_tokens == 3 and answer.output_tokens == 1
+        assert captured["url"].endswith("/chat/completions")
+        assert captured["headers"]["Authorization"] == "Bearer secret"
+        # Chat Completions messages need no reshaping: role/content pass through as-is.
+        assert captured["payload"]["messages"] == [{"role": "system", "content": "Be brief"}, {"role": "user", "content": "Hello"}]
+
+
 def test_register_login_logout_and_me(client: TestClient):
     payload = {
         "agency_name": "North Studio",
@@ -96,7 +114,7 @@ def test_provider_key_is_stored_masked(authenticated_client: TestClient):
     assert "encrypted_api_key" not in saved.json()
 
     listed = authenticated_client.get("/api/providers").json()
-    assert {p["provider"] for p in listed} == {"openai", "anthropic"}
+    assert {p["provider"] for p in listed} == {"openai", "anthropic", "openrouter", "deepseek"}
     assert next(p for p in listed if p["provider"] == "openai")["configured"] is True
 
 

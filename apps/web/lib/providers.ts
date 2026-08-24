@@ -37,6 +37,29 @@ export const PROVIDERS = [
       "claude-haiku-4-5",
     ],
   },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    keyPlaceholder: "sk-or-v1-...",
+    keyUrl: "https://openrouter.ai/keys",
+    // OpenRouter routes to hundreds of models; these are just starting points,
+    // any "vendor/model" slug can be typed in (the picker allows custom values).
+    models: [
+      "openai/gpt-5.4",
+      "anthropic/claude-sonnet-4-6",
+      "google/gemini-3-pro",
+      "deepseek/deepseek-chat",
+      "meta-llama/llama-4-maverick",
+      "mistralai/mistral-large",
+    ],
+  },
+  {
+    id: "deepseek",
+    label: "DeepSeek",
+    keyPlaceholder: "sk-...",
+    keyUrl: "https://platform.deepseek.com/api_keys",
+    models: ["deepseek-chat", "deepseek-reasoner"],
+  },
 ] as const;
 
 export type ProviderId = (typeof PROVIDERS)[number]["id"];

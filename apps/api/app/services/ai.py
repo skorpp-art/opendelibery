@@ -3,6 +3,8 @@ from dataclasses import dataclass
 import httpx
 from fastapi import HTTPException
 
+from .providers import CHAT_COMPLETIONS_PROVIDERS
+
 
 ANTHROPIC_VERSION = "2023-06-01"
 
@@ -32,10 +34,13 @@ async def chat_completion(
     max_tokens: int | None = None,
 ) -> Completion:
     """Generate a reply using the provider's modern chat API: the OpenAI
-    Responses API, or the Anthropic Messages API."""
+    Responses API, the Anthropic Messages API, or (for OpenAI-compatible
+    aggregators like OpenRouter and DeepSeek) the Chat Completions API."""
     try:
         if provider == "anthropic":
             return await _anthropic_messages(base_url, api_key, model, messages, temperature, max_tokens)
+        if provider in CHAT_COMPLETIONS_PROVIDERS:
+            return await _openai_chat_completions(base_url, api_key, model, messages, temperature, max_tokens)
         return await _openai_responses(base_url, api_key, model, messages, temperature, max_tokens)
     except HTTPException:
         raise
@@ -65,6 +70,30 @@ async def _openai_responses(base_url, api_key, model, messages, temperature, max
         text=extract_openai_text(data),
         input_tokens=int(usage.get("input_tokens") or 0),
         output_tokens=int(usage.get("output_tokens") or 0),
+    )
+
+
+async def _openai_chat_completions(base_url, api_key, model, messages, temperature, max_tokens) -> Completion:
+    """Chat Completions API — used by OpenAI-compatible providers that don't
+    implement the newer Responses API (OpenRouter, DeepSeek)."""
+    url = f"{base_url.rstrip('/')}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    base_payload: dict = {"model": model, "messages": messages}
+    sampling: dict = {}
+    if temperature is not None:
+        sampling["temperature"] = temperature
+    if max_tokens is not None:
+        sampling["max_tokens"] = max_tokens
+    data = await _post_json(url, headers, base_payload, sampling)
+    choice = (data.get("choices") or [{}])[0]
+    text = ((choice.get("message") or {}).get("content") or "").strip()
+    if not text:
+        raise ValueError("empty response")
+    usage = data.get("usage") or {}
+    return Completion(
+        text=text,
+        input_tokens=int(usage.get("prompt_tokens") or 0),
+        output_tokens=int(usage.get("completion_tokens") or 0),
     )
 
 

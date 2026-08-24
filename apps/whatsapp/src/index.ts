@@ -61,9 +61,33 @@ const server = createServer(async (request, response) => {
   }
 });
 
+// Startup can race the backend becoming reachable (fresh container, brief
+// network blip after a host restart) — a single failed attempt must not
+// permanently strand every WhatsApp session until someone notices and
+// restarts the bridge by hand.
+const RESTORE_RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
+
+async function restoreChannelsWithRetry(): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await manager.restoreChannels();
+      return;
+    } catch (error) {
+      const delay = RESTORE_RETRY_DELAYS_MS[attempt];
+      const message = (error as Error).message;
+      if (delay === undefined) {
+        console.error("[WhatsApp] Could not restore sessions after repeated retries, giving up:", message);
+        return;
+      }
+      console.error(`[WhatsApp] Could not restore sessions (retrying in ${delay / 1000}s):`, message);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 server.listen(port, host, () => {
   console.log(`[WhatsApp] Bridge ready at ${host}:${port}`);
-  void manager.restoreChannels().catch((error) => console.error("[WhatsApp] Could not restore sessions:", error.message));
+  void restoreChannelsWithRetry();
 });
 
 async function stop(): Promise<void> {

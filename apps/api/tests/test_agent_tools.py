@@ -11,7 +11,7 @@ from app.routers import agent_tools as agent_tools_router
 from app.security import encrypt_secret
 from app.services import ai as ai_module
 from app.services.tools import http_exec as http_exec_module
-from app.services.tools.loop import MAX_TOOL_ITERATIONS, anthropic_tool_loop, openai_tool_loop
+from app.services.tools.loop import MAX_TOOL_ITERATIONS, anthropic_tool_loop, chat_completions_tool_loop, openai_tool_loop
 from app.services.tools.specs import build_tool_specs
 
 
@@ -318,6 +318,38 @@ def test_openai_tool_loop_round_trip(monkeypatch):
     assert function_call in second_input
     assert second_input[-1] == {"type": "function_call_output", "call_id": "call_1", "output": 'HTTP 200: {"status": "shipped"}'}
     assert completion.text == "Shipped!"
+    assert completion.tool_calls and completion.tool_calls[0]["name"] == "check_order"
+
+
+def test_chat_completions_tool_loop_round_trip(monkeypatch):
+    """OpenRouter/DeepSeek-style Chat Completions tool loop."""
+    specs = build_tool_specs([_http_tool_row()])
+    llm_calls: list[dict] = []
+    tool_call: dict = {}
+    tool_calls = [{"id": "call_1", "type": "function", "function": {"name": "check_order", "arguments": '{"order_id": "42"}'}}]
+    _patch_httpx(monkeypatch, ai_module, _ScriptedLLM([
+        {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": tool_calls}}], "usage": {"prompt_tokens": 9, "completion_tokens": 4}},
+        {"choices": [{"message": {"role": "assistant", "content": "Shipped!"}}], "usage": {"prompt_tokens": 20, "completion_tokens": 3}},
+    ], llm_calls))
+    _patch_httpx(monkeypatch, http_exec_module, _FakeToolEndpoint(tool_call))
+    _allow_all_urls(monkeypatch)
+
+    completion = asyncio.run(chat_completions_tool_loop(
+        "https://openrouter.ai/api/v1", "sk-or-v1-secret", "deepseek/deepseek-chat",
+        [{"role": "system", "content": "Be helpful"}, {"role": "user", "content": "Where is order 42?"}],
+        specs, None, None,
+    ))
+
+    # Nested function shape (unlike the Responses API's flat tool shape).
+    first_tool = llm_calls[0]["payload"]["tools"][0]
+    assert first_tool["type"] == "function"
+    assert first_tool["function"]["name"] == "check_order"
+
+    second_messages = llm_calls[1]["payload"]["messages"]
+    assert second_messages[-2] == {"role": "assistant", "content": None, "tool_calls": tool_calls}
+    assert second_messages[-1] == {"role": "tool", "tool_call_id": "call_1", "content": 'HTTP 200: {"status": "shipped"}'}
+    assert completion.text == "Shipped!"
+    assert completion.input_tokens == 29 and completion.output_tokens == 7
     assert completion.tool_calls and completion.tool_calls[0]["name"] == "check_order"
 
 

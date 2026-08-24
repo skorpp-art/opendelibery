@@ -10,8 +10,14 @@ from ..security import decrypt_secret
 PROVIDERS: dict[str, dict[str, str]] = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1"},
     "anthropic": {"label": "Anthropic", "base_url": "https://api.anthropic.com/v1"},
+    "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1"},
+    "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com/v1"},
 }
 SUPPORTED = tuple(PROVIDERS)
+
+# Providers that speak the OpenAI Chat Completions API (/chat/completions)
+# rather than the newer Responses API (/responses) that "openai" itself uses.
+CHAT_COMPLETIONS_PROVIDERS = frozenset({"openrouter", "deepseek"})
 
 
 def base_url_for(provider: str) -> str:

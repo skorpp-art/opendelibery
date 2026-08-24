@@ -94,7 +94,7 @@ class Client(Base):
 
 class ProviderCredential(Base):
     """One AI provider API key per agency (bring your own key). provider is
-    "openai" or "anthropic"; the base URL is resolved from the provider."""
+    one of services/providers.py PROVIDERS; the base URL is resolved from it."""
 
     __tablename__ = "provider_credentials"
     __table_args__ = (UniqueConstraint("agency_id", "provider", name="uq_provider_credentials_agency_provider"),)
@@ -126,7 +126,7 @@ class Agent(Base):
     brief_goal: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_dos: Mapped[str] = mapped_column(Text, default="", server_default="")
     brief_donts: Mapped[str] = mapped_column(Text, default="", server_default="")
-    # AI provider ("openai" or "anthropic"); the agency's key for that provider is used.
+    # AI provider (see services/providers.py PROVIDERS); the agency's key for that provider is used.
     provider: Mapped[str] = mapped_column(String(30), default="openai", server_default="openai")
     model: Mapped[str] = mapped_column(String(180), default="")
     # IANA timezone (e.g. "America/Bogota"); injected into the system prompt so
